@@ -246,8 +246,8 @@ async function updateOrderTrackingState(orderTrackDetails, state) {
 async function handleUserRegistration(Psid) {
   const userRecord = await findUser({ Psid: Psid });
   if (userRecord == null) {
-    const userInfo = await getUserInformation(Psid);
-    await createUser({ ...userInfo, Psid: Psid });
+    // const userInfo = await getUserInformation(Psid);
+    await createUser({ Psid: Psid });
   }
 }
 async function handleStartTransaction(senderPsid, message) {
@@ -397,11 +397,11 @@ async function handleDriverRegistration(senderPsid, message) {
     if (await isDriver(senderPsid)) {
       await sendGenericMessage(senderPsid, "DRIVER_ALREADY_REGISTERED");
     } else {
-      const { first_name, last_name } = await getUserInformation(senderPsid);
+      // const { first_name, last_name } = await getUserInformation(senderPsid);
       const result = await createDriver({
         Psid: senderPsid,
-        first_name: first_name,
-        last_name: last_name,
+        // first_name: first_name,
+        // last_name: last_name,
         status: "Vacant",
         verified: false,
       });
