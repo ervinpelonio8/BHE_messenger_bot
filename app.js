@@ -1,202 +1,469 @@
-/**
- * Copyright 2021-present, Facebook, Inc. All rights reserved.
- *
- * This source code is licensed under the license found in the
- * LICENSE file in the root directory of this source tree.
- *
- * Messenger Platform Quick Start Tutorial
- *
- * This is the completed code for the Messenger Platform quick start tutorial
- *
- * https://developers.facebook.com/docs/messenger-platform/getting-started/quick-start/
- *
- * To run this code, you must do the following:
- *
- * 1. Deploy this code to a server running Node.js
- * 2. Run `yarn install`
- * 3. Add your VERIFY_TOKEN and PAGE_ACCESS_TOKEN to your environment vars
- */
-
-'use strict';
+"use strict";
 
 // Use dotenv to read .env vars into Node
-require('dotenv').config();
+require("dotenv").config();
+const {
+  findOrder,
+  createOrder,
+  updateOrder,
+  orderExists,
+} = require("./orderUtils");
+const {
+  findOrderTracking,
+  updateOrderTracking,
+  createOrderTracking,
+} = require("./orderTrackingUtils");
+const {
+  findDriver,
+  updateDriver,
+  createDriver,
+  isDriver,
+} = require("./driverUtils");
+const {
+  findDriverUserPair,
+  updateDriverUserPair,
+  createDriverUserPair,
+  getDriverActiveTransaction,
+  getUserActiveTransaction,
+  isOrderAssigned,
+} = require("./orderTransactionUtils");
+const {
+  findUser,
+  createUser,
+  updateUser,
+  getUserInformation,
+} = require("./userUtils");
+const {
+  callSendAPI,
+  sendGenericMessage,
+  broadcastDriverOrderAssignment,
+  broadcastUserOrderCancellation,
+  sendOrderAlreadyAssigned,
+  sendOrderAssigned,
+  broadcastNewOrder,
+  sendUndeliveredMessage,
+  sendOrderAssignedToDriver,
+  sendOrderCancelledInfoToDriver,
+  getSetting,
+  sendOrderDoesNotExist,
+  sendPendingOrdersToVacantDriver,
+  sendOrderCompleted,
+} = require("./messageSendingUtils");
 
-// Imports dependencies and set up http server
-const
-  request = require('request'),
-  express = require('express'),
-  { urlencoded, json } = require('body-parser'),
-  app = express();
-
-// Parse application/x-www-form-urlencoded
+const express = require("express"),
+  app = express(),
+  { urlencoded, json } = require("body-parser");
 app.use(urlencoded({ extended: true }));
 
-// Parse application/json
-app.use(json());
-
-// Respond with 'Hello World' when a GET request is made to the homepage
-app.get('/', function (_req, res) {
-  res.send('Hello World');
+const { MongoClient } = require("mongodb");
+const client = new MongoClient(process.env.MONGO_URI, {
+  useUnifiedTopology: true,
 });
 
-// Adds support for GET requests to our webhook
-app.get('/webhook', (req, res) => {
+app.use(json());
 
-  // Your verify token. Should be a random string.
+app.get("/", function (_req, res) {
+  res.send("Hello World");
+});
+
+app.get("/webhook", (req, res) => {
   const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+  let mode = req.query["hub.mode"];
+  let token = req.query["hub.verify_token"];
+  let challenge = req.query["hub.challenge"];
 
-  // Parse the query params
-  let mode = req.query['hub.mode'];
-  let token = req.query['hub.verify_token'];
-  let challenge = req.query['hub.challenge'];
-
-  // Checks if a token and mode is in the query string of the request
   if (mode && token) {
-
-    // Checks the mode and token sent is correct
-    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-
-      // Responds with the challenge token from the request
-      console.log('WEBHOOK_VERIFIED');
+    if (mode === "subscribe" && token === VERIFY_TOKEN) {
       res.status(200).send(challenge);
-
     } else {
-      // Responds with '403 Forbidden' if verify tokens do not match
       res.sendStatus(403);
     }
   }
 });
 
-// Creates the endpoint for your webhook
-app.post('/webhook', (req, res) => {
+app.post("/webhook", async (req, res) => {
   let body = req.body;
-
-  // Checks if this is an event from a page subscription
-  if (body.object === 'page') {
-
-    // Iterates over each entry - there may be multiple if batched
-    body.entry.forEach(function(entry) {
-
-      // Gets the body of the webhook event
+  if (body.object === "page") {
+    body.entry.forEach(async (entry) => {
       let webhookEvent = entry.messaging[0];
-      console.log(webhookEvent);
-
-      // Get the sender PSID
       let senderPsid = webhookEvent.sender.id;
-      console.log('Sender PSID: ' + senderPsid);
-
-      // Check if the event is a message or postback and
-      // pass the event to the appropriate handler function
       if (webhookEvent.message) {
-        handleMessage(senderPsid, webhookEvent.message);
+        const driverRegistrationRes = await handleDriverRegistration(
+          senderPsid,
+          webhookEvent.message
+        );
+        if (driverRegistrationRes) {
+          return;
+        } else {
+          if (await isDriver(senderPsid)) {
+            const driverTransaction = await getDriverActiveTransaction(
+              senderPsid
+            );
+            if (driverTransaction == null) {
+              if (
+                !(await handleOrderAssignment(
+                  senderPsid,
+                  webhookEvent.message.text
+                ))
+              ) {
+                sendGenericMessage(senderPsid, "IDLE_DRIVER_MESSAGE");
+              }
+            } else {
+              if (
+                await handleOrderDelivered(
+                  senderPsid,
+                  webhookEvent.message.text
+                )
+              )
+                return;
+              if (
+                await handleOrderCancelled(
+                  senderPsid,
+                  webhookEvent.message.text
+                )
+              )
+                return;
+              const responseToUser = {
+                text: webhookEvent.message.text,
+              };
+              callSendAPI(driverTransaction.user, responseToUser);
+            }
+          } else {
+            const userTransaction = await getUserActiveTransaction(senderPsid);
+            if (userTransaction == null) {
+              // handle logic for starting a transaction
+              await handleStartTransaction(
+                senderPsid,
+                webhookEvent.message.text
+              );
+            } else {
+              if (
+                userTransaction.status.toLowerCase() === "delivered" &&
+                webhookEvent.message.text.toLowerCase() === "undelivered"
+              ) {
+                await updateDriverUserPair(
+                  { _id: userTransaction._id },
+                  { $set: { status: "Ongoing" } }
+                );
+                await sendUndeliveredMessage(
+                  userTransaction.driver,
+                  userTransaction.orderNumber
+                );
+              } else if (
+                userTransaction.status.toLowerCase() === "delivered" &&
+                webhookEvent.message.text.toLowerCase() === "order completed"
+              ) {
+                await updateDriverUserPair(
+                  { _id: userTransaction._id },
+                  { $set: { status: "Completed" } }
+                );
+                await sendOrderCompleted(
+                  userTransaction.driver,
+                  userTransaction.orderNumber
+                );
+                await sendGenericMessage(
+                  userTransaction.user,
+                  "THANK_YOU_MESSAGE"
+                );
+                await updateDriver(
+                  { Psid: userTransaction.driver },
+                  { $set: { status: "Vacant" } }
+                );
+                await sendPendingOrdersToVacantDriver(userTransaction.driver);
+              } else {
+                const responseToUser = {
+                  text: webhookEvent.message.text,
+                };
+                callSendAPI(userTransaction.driver, responseToUser);
+              }
+            }
+          }
+        }
       } else if (webhookEvent.postback) {
-        handlePostback(senderPsid, webhookEvent.postback);
+        await handlePostback(senderPsid, webhookEvent.postback);
       }
     });
-
-    // Returns a '200 OK' response to all requests
-    res.status(200).send('EVENT_RECEIVED');
+    res.status(200).send("EVENT_RECEIVED");
   } else {
-
-    // Returns a '404 Not Found' if event is not from a page subscription
     res.sendStatus(404);
   }
 });
 
-// Handles messages events
-function handleMessage(senderPsid, receivedMessage) {
-  let response;
-
-  // Checks if the message contains text
-  if (receivedMessage.text) {
-    // Create the payload for a basic text message, which
-    // will be added to the body of your request to the Send API
-    response = {
-      'text': `You sent the message: '${receivedMessage.text}'. Now send me an attachment!`
+async function handleOrderCancelled(senderPsid, message) {
+  if (message.toLowerCase() == "cancel order") {
+    const record = await findDriverUserPair({
+      driver: senderPsid,
+      status: "Ongoing",
+    });
+    const transFilter = {
+      driver: senderPsid,
+      status: "Ongoing",
+      user: record.user,
     };
-  } else if (receivedMessage.attachments) {
+    const transUpdate = {
+      $set: { status: "Cancelled" },
+    };
+    await updateDriverUserPair(transFilter, transUpdate);
+    await sendGenericMessage(
+      record.user,
+      "ORDER_CANCELLED_BY_DRIVER_INFO_TO_USER"
+    );
+    await sendOrderCancelledInfoToDriver(record.driver, record.orderNumber);
+    const driverFilter = { Psid: senderPsid };
+    const driverUpdate = {
+      $set: { status: "Vacant" },
+    };
+    await sendPendingOrdersToVacantDriver(senderPsid);
+    await updateDriver(driverFilter, driverUpdate);
+    await handleStartTransaction(record.user, "");
+    return true;
+  }
+  return false;
+}
 
-    // Get the URL of the message attachment
-    let attachmentUrl = receivedMessage.attachments[0].payload.url;
-    response = {
-      'attachment': {
-        'type': 'template',
-        'payload': {
-          'template_type': 'generic',
-          'elements': [{
-            'title': 'Is this the right picture?',
-            'subtitle': 'Tap a button to answer.',
-            'image_url': attachmentUrl,
-            'buttons': [
-              {
-                'type': 'postback',
-                'title': 'Yes!',
-                'payload': 'yes',
-              },
-              {
-                'type': 'postback',
-                'title': 'No!',
-                'payload': 'no',
-              }
-            ],
-          }]
-        }
-      }
+async function updateOrderTrackingState(orderTrackDetails, state) {
+  // state: 1 (start) , 2 (type has been chosen)[update here after answering],
+  // 3- details are given, 4 - driver accepted, 5- cancelled (by user, not by driver)
+
+  const filter = {
+    user: orderTrackDetails.user,
+    state: { $nin: [4, 5] },
+  };
+  let update = {};
+  if (state == 2) {
+    update = {
+      $set: { state: state, type: orderTrackDetails.type },
+    };
+  } else if (state == 3) {
+    update = {
+      $set: { state: state, details: orderTrackDetails.details },
+    };
+  } else {
+    update = {
+      $set: { state: state },
     };
   }
+  await updateOrderTracking(filter, update);
+}
 
-  // Send the response message
-  callSendAPI(senderPsid, response);
+async function handleUserRegistration(Psid) {
+  const userRecord = await findUser({ Psid: Psid });
+  if (userRecord == null) {
+    const userInfo = await getUserInformation(Psid);
+    await createUser({ ...userInfo, Psid: Psid });
+  }
+}
+async function handleStartTransaction(senderPsid, message) {
+  const orderTrackingRecord = await findOrderTracking({
+    user: senderPsid,
+    state: { $nin: [4, 5] },
+  });
+  if (orderTrackingRecord == null) {
+    await handleUserRegistration(senderPsid);
+    await sendGenericMessage(senderPsid, "ORDER_START");
+    await createOrderTracking(senderPsid);
+  } else {
+    if (message.toLowerCase() === "cancel order") {
+      await updateOrderTrackingState({ user: senderPsid }, 5);
+      const orderFilter = {
+        trackingRefId: orderTrackingRecord._id,
+      };
+      const order = await updateOrder(orderFilter, {
+        $set: { isCancelled: true },
+      });
+      await broadcastUserOrderCancellation(order.orderNumber);
+      await sendGenericMessage(
+        senderPsid,
+        "USER_ORDER_CANCELLATION_ACKNOWLEDGEMENT"
+      );
+      await sendGenericMessage(senderPsid, "ORDER_START");
+      await createOrderTracking(senderPsid);
+    }
+    if (orderTrackingRecord.state == 1) {
+      if (message.toLowerCase() === "grocery") {
+        await sendGenericMessage(senderPsid, "GROCERY_INSTRUCTIONS");
+        await updateOrderTrackingState({ user: senderPsid, type: message }, 2);
+      } else if (message.toLowerCase() === "food delivery") {
+        await sendGenericMessage(senderPsid, "FOOD_DELIVERY_INSTRUCTIONS");
+        await updateOrderTrackingState({ user: senderPsid, type: message }, 2);
+      } else {
+        await sendGenericMessage(senderPsid, "SPECIFY_ORDER_TYPE");
+      }
+    } else if (orderTrackingRecord.state == 2) {
+      await updateOrderTrackingState({ user: senderPsid, details: message }, 3);
+      const orderNumber = await getNextSequenceValue("order");
+      await createOrder({
+        user: orderTrackingRecord.user,
+        trackingRefId: orderTrackingRecord._id,
+        details: message,
+        orderType: orderTrackingRecord.type,
+        isCancelled: false,
+        orderNumber: orderNumber,
+        withRider: false,
+      });
+
+      await broadcastNewOrder(orderNumber, orderTrackingRecord.type, message);
+      await sendGenericMessage(senderPsid, "WAITING_FOR_RIDER");
+    } else if (orderTrackingRecord.state == 3) {
+      await sendGenericMessage(senderPsid, "WAITING_FOR_RIDER");
+    }
+  }
+}
+
+async function handleOrderDelivered(senderPsid, message) {
+  if (message.toLowerCase() === "order delivered") {
+    const record = await updateDriverUserPair(
+      {
+        driver: senderPsid,
+        status: "Ongoing",
+      },
+      { $set: { status: "Delivered" } }
+    );
+    sendGenericMessage(record.user, "ORDER_DELIVERED");
+    return true;
+  }
+  return false;
+}
+
+async function handleOrderAssignment(senderPsid, message) {
+  if (
+    message.toLowerCase().includes("accept order") &&
+    message.split(" ").length == 3
+  ) {
+    const orderNumber = parseInt(message.split(" ")[2]);
+    if (!(await orderExists(orderNumber))) {
+      await sendOrderDoesNotExist(senderPsid, orderNumber);
+    } else if (await isOrderAssigned(orderNumber)) {
+      await sendOrderAlreadyAssigned(senderPsid, orderNumber);
+    } else {
+      const driver = await findDriver({
+        Psid: senderPsid,
+      });
+      const order = await findOrder({
+        orderNumber: orderNumber,
+      });
+      await updateOrder(
+        {
+          orderNumber: orderNumber,
+        },
+        {
+          $set: { withRider: true },
+        }
+      );
+      await startDriverUserTransaction(senderPsid, orderNumber);
+      await sendOrderAssigned(senderPsid, orderNumber);
+      await sendOrderAssignedToDriver(
+        order.user,
+        driver.first_name + " " + driver.last_name
+      );
+      await broadcastDriverOrderAssignment(orderNumber);
+      const orderRecord = await findOrder({
+        orderNumber: orderNumber,
+      });
+      const orderTrackingRecord = await updateOrderTracking(
+        {
+          _id: orderRecord.trackingRefId,
+        },
+        { $set: { state: 4 } }
+      );
+      await updateDriver(
+        { Psid: senderPsid },
+        { $set: { status: "Assigned" } }
+      );
+    }
+    return true;
+  } else {
+    return false;
+  }
+}
+async function startDriverUserTransaction(driver, orderNumber) {
+  const orderRecord = await findOrder({
+    orderNumber: orderNumber,
+  });
+  const result = await createDriverUserPair({
+    driver: driver,
+    user: orderRecord.user,
+    orderNumber: orderRecord.orderNumber,
+    status: "Ongoing",
+  });
+
+  const filter = { Psid: driver };
+  const update = {
+    $set: { status: "Assigned" },
+  };
+  await updateDriver(filter, update);
+}
+
+async function handleDriverRegistration(senderPsid, message) {
+  const driver_reg_message = await getSetting("DRIVER_CODE");
+  if (message.text === driver_reg_message) {
+    if (await isDriver(senderPsid)) {
+      await sendGenericMessage(senderPsid, "DRIVER_ALREADY_REGISTERED");
+    } else {
+      const { first_name, last_name } = await getUserInformation(senderPsid);
+      const result = await createDriver({
+        Psid: senderPsid,
+        first_name: first_name,
+        last_name: last_name,
+        status: "Vacant",
+        verified: false,
+      });
+      await sendGenericMessage(senderPsid, "DRIVER_SUCCESSFUL_REGISTRATION");
+      await sendPendingOrdersToVacantDriver(senderPsid);
+    }
+    return true;
+  }
+  return false;
 }
 
 // Handles messaging_postbacks events
-function handlePostback(senderPsid, receivedPostback) {
+async function handlePostback(senderPsid, receivedPostback) {
   let response;
 
   // Get the payload for the postback
   let payload = receivedPostback.payload;
 
   // Set the response based on the postback payload
-  if (payload === 'yes') {
-    response = { 'text': 'Thanks!' };
-  } else if (payload === 'no') {
-    response = { 'text': 'Oops, try sending another image.' };
+  if (payload === "WELCOME_MESSAGE") {
+    await handleStartTransaction(senderPsid, "");
   }
-  // Send the message to acknowledge the postback
-  callSendAPI(senderPsid, response);
 }
 
-// Sends response messages via the Send API
-function callSendAPI(senderPsid, response) {
+async function getNextSequenceValue(collectionName) {
+  try {
+    await client.connect();
+    const db = client.db(process.env.MONGO_DB);
+    const countersCollection = db.collection("counters");
 
-  // The page access token we have generated in your app settings
-  const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
+    const result = await countersCollection.findOneAndUpdate(
+      { _id: collectionName },
+      { $inc: { sequence_value: 1 } },
+      { returnDocument: "after" }
+    );
 
-  // Construct the message body
-  let requestBody = {
-    'recipient': {
-      'id': senderPsid
-    },
-    'message': response
-  };
+    return result.sequence_value;
+  } finally {
+    await client.close();
+  }
+}
 
-  // Send the HTTP request to the Messenger Platform
-  request({
-    'uri': 'https://graph.facebook.com/v2.6/me/messages',
-    'qs': { 'access_token': PAGE_ACCESS_TOKEN },
-    'method': 'POST',
-    'json': requestBody
-  }, (err, _res, _body) => {
-    if (!err) {
-      console.log('Message sent!');
-    } else {
-      console.error('Unable to send message:' + err);
-    }
-  });
+async function createCountersCollection() {
+  try {
+    const db = client.db(database);
+    const countersCollection = db.collection("counters");
+
+    // Create a counter document for a collection named 'yourCollection'
+    await countersCollection.updateOne(
+      { _id: "order" },
+      { $setOnInsert: { sequence_value: 0 } },
+      { upsert: true }
+    );
+  } finally {
+    await client.close();
+  }
 }
 
 // listen for requests :)
-var listener = app.listen(process.env.PORT, function() {
-  console.log('Your app is listening on port ' + listener.address().port);
+var listener = app.listen(process.env.PORT, function () {
+  console.log("Your app is listening on port " + listener.address().port);
 });
