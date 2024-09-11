@@ -4,7 +4,7 @@ let cachedDb = null;
 
 const connectToDatabase = async () => {
   if (cachedDb) {
-    console.warn("👌 Using existing connection");
+    console.info("👌 Using existing connection");
     return Promise.resolve(cachedDb);
   }
 
@@ -13,13 +13,13 @@ const connectToDatabase = async () => {
   })
     .then((client) => {
       let db = client.db(process.env.MONGO_DB);
-      console.warn("🔥 New DB Connection");
+      console.info("🔥 New DB Connection");
       cachedDb = db;
       return cachedDb;
     })
     .catch((error) => {
-      console.warn("Mongo connect Error");
-      console.warn(error);
+      console.info("Mongo connect Error");
+      console.info(error);
     });
 };
 
