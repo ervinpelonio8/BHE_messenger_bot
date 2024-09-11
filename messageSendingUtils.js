@@ -6,9 +6,7 @@ const request = require("request"),
   app = express();
 
 const util = require("util");
-const client = new MongoClient(process.env.MONGO_URI, {
-  useUnifiedTopology: true,
-});
+const client = new MongoClient(process.env.MONGO_URI);
 const databaseName = process.env.MONGO_DB;
 const database = client.db(databaseName);
 const settingsCollection = database.collection("setting");

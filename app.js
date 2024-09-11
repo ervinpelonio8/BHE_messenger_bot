@@ -56,9 +56,7 @@ const express = require("express"),
 app.use(urlencoded({ extended: true }));
 
 const { MongoClient } = require("mongodb");
-const client = new MongoClient(process.env.MONGO_URI, {
-  useUnifiedTopology: true,
-});
+const client = new MongoClient(process.env.MONGO_URI);
 
 app.use(json());
 

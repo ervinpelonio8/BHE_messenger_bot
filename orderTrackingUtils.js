@@ -3,9 +3,7 @@
 // Use dotenv to read .env vars into Node
 require("dotenv").config();
 const { MongoClient } = require("mongodb");
-const client = new MongoClient(process.env.MONGO_URI, {
-  useUnifiedTopology: true,
-});
+const client = new MongoClient(process.env.MONGO_URI);
 const databaseName = process.env.MONGO_DB;
 const database = client.db(databaseName);
 const collection = database.collection("order_state_tracking");
