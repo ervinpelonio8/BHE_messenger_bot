@@ -55,8 +55,7 @@ const express = require("express"),
   { urlencoded, json } = require("body-parser");
 app.use(urlencoded({ extended: true }));
 
-const { MongoClient } = require("mongodb");
-const client = new MongoClient(process.env.MONGO_URI);
+const { connectToDatabase } = require("./db.js");
 
 app.use(json());
 
@@ -429,9 +428,8 @@ async function handlePostback(senderPsid, receivedPostback) {
 
 async function getNextSequenceValue(collectionName) {
   try {
-    await client.connect();
-    const db = client.db(process.env.MONGO_DB);
-    const countersCollection = db.collection("counters");
+    const database = await connectToDatabase();
+    const countersCollection = database.collection("counters");
 
     const result = await countersCollection.findOneAndUpdate(
       { _id: collectionName },
@@ -440,15 +438,15 @@ async function getNextSequenceValue(collectionName) {
     );
 
     return result.sequence_value;
-  } finally {
-    await client.close();
+  } catch (err) {
+    console.log("Error getting next sequence!", err);
   }
 }
 
 async function createCountersCollection() {
   try {
-    const db = client.db(database);
-    const countersCollection = db.collection("counters");
+    const database = await connectToDatabase();
+    const countersCollection = database.collection("counters");
 
     // Create a counter document for a collection named 'yourCollection'
     await countersCollection.updateOne(
@@ -456,8 +454,8 @@ async function createCountersCollection() {
       { $setOnInsert: { sequence_value: 0 } },
       { upsert: true }
     );
-  } finally {
-    await client.close();
+  } catch (err) {
+    console.log("Error creating counters!", err);
   }
 }
 

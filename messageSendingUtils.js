@@ -1,17 +1,11 @@
 require("dotenv").config();
-const { MongoClient } = require("mongodb");
 const request = require("request"),
   express = require("express"),
   { urlencoded, json, text } = require("body-parser"),
   app = express();
 
 const util = require("util");
-const client = new MongoClient(process.env.MONGO_URI);
-const databaseName = process.env.MONGO_DB;
-const database = client.db(databaseName);
-const settingsCollection = database.collection("setting");
-const driverCollection = database.collection("driver");
-const orderCollection = database.collection("order");
+const { connectToDatabase } = require("./db.js");
 
 async function sendGenericMessage(recepientPsid, messageKeyword) {
   const message = await getSetting(messageKeyword);
@@ -54,6 +48,8 @@ async function broadcastNewOrder(orderNumber, type, details) {
 }
 
 async function broadcastMessageToAvailableRiders(message) {
+  const database = await connectToDatabase();
+  const driverCollection = database.collection("driver");
   const cursor = driverCollection.find({ status: "Vacant" });
   await cursor.forEach((doc) => {
     callSendAPI(doc.Psid, message);
@@ -61,6 +57,8 @@ async function broadcastMessageToAvailableRiders(message) {
 }
 
 async function getSetting(settingName) {
+  const database = await connectToDatabase();
+  const settingsCollection = database.collection("setting");
   const setting = await settingsCollection.findOne({ name: settingName });
 
   if (setting == null || setting === undefined) {
@@ -111,6 +109,8 @@ async function sendOrderAssignedToDriver(recepientPsid, driverName) {
 }
 
 async function sendPendingOrdersToVacantDriver(driverPsid) {
+  const database = await connectToDatabase();
+  const orderCollection = database.collection("order");
   const orderQuery = {
     withRider: false,
   };

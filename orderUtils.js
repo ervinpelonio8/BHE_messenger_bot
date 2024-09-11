@@ -2,27 +2,31 @@
 
 // Use dotenv to read .env vars into Node
 require("dotenv").config();
-const { MongoClient } = require("mongodb");
-const client = new MongoClient(process.env.MONGO_URI);
-const databaseName = process.env.MONGO_DB;
-const database = client.db(databaseName);
-const collection = database.collection("order");
+const { connectToDatabase } = require("./db.js");
 
 async function findOrder(filter) {
+  const database = await connectToDatabase();
+  const collection = database.collection("order");
   return collection.findOne(filter);
 }
 
 async function updateOrder(filter, update) {
+  const database = await connectToDatabase();
+  const collection = database.collection("order");
   return collection.findOneAndUpdate(filter, update, {
     returnDocument: "after",
   });
 }
 
 async function createOrder(order) {
+  const database = await connectToDatabase();
+  const collection = database.collection("order");
   return collection.insertOne(order);
 }
 
 async function orderExists(orderNumber) {
+  const database = await connectToDatabase();
+  const collection = database.collection("order");
   const record = await findOrder({ orderNumber: orderNumber });
   return record != null;
 }
