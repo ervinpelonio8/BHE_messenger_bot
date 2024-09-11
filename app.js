@@ -437,7 +437,7 @@ async function getNextSequenceValue(collectionName) {
 
     return result.sequence_value;
   } catch (err) {
-    console.info("Error getting next sequence!", err);
+    console.error("Error getting next sequence!", err);
   }
 }
 
@@ -453,11 +453,11 @@ async function createCountersCollection() {
       { upsert: true }
     );
   } catch (err) {
-    console.info("Error creating counters!", err);
+    console.error("Error creating counters!", err);
   }
 }
 
 // listen for requests :)
 var listener = app.listen(process.env.PORT, function () {
-  console.info("Your app is listening on port " + listener.address().port);
+  console.error("Your app is listening on port " + listener.address().port);
 });
