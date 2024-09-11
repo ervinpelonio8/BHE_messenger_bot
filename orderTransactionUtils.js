@@ -42,7 +42,7 @@ async function getUserActiveTransaction(userPsid) {
     status: { $nin: ["Completed", "Cancelled"] },
   });
 
-  console.log("This is the retrieved record for user transaction: ", record);
+  console.warn("This is the retrieved record for user transaction: ", record);
   return record;
 }
 

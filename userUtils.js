@@ -33,7 +33,7 @@ async function getUserInformation(psid) {
     const { first_name, last_name } = response.data;
     return { first_name, last_name };
   } catch (error) {
-    console.log(error);
+    console.warn(error);
   }
 }
 

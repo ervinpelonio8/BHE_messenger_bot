@@ -145,8 +145,8 @@ async function sendOrderCancelledInfoToDriver(recepientPsid, orderNumber) {
 
 // Sends response messages via the Send API
 function callSendAPI(senderPsid, response) {
-  console.log("SenderPsid: ", senderPsid);
-  console.log("Response: ", response);
+  console.warn("SenderPsid: ", senderPsid);
+  console.warn("Response: ", response);
 
   // The page access token we have generated in your app settings
   const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;

@@ -415,8 +415,6 @@ async function handleDriverRegistration(senderPsid, message) {
 
 // Handles messaging_postbacks events
 async function handlePostback(senderPsid, receivedPostback) {
-  let response;
-
   // Get the payload for the postback
   let payload = receivedPostback.payload;
 
@@ -439,7 +437,7 @@ async function getNextSequenceValue(collectionName) {
 
     return result.sequence_value;
   } catch (err) {
-    console.log("Error getting next sequence!", err);
+    console.warn("Error getting next sequence!", err);
   }
 }
 
@@ -455,11 +453,11 @@ async function createCountersCollection() {
       { upsert: true }
     );
   } catch (err) {
-    console.log("Error creating counters!", err);
+    console.warn("Error creating counters!", err);
   }
 }
 
 // listen for requests :)
 var listener = app.listen(process.env.PORT, function () {
-  console.log("Your app is listening on port " + listener.address().port);
+  console.warn("Your app is listening on port " + listener.address().port);
 });
