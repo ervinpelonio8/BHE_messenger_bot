@@ -24,6 +24,11 @@ async function createDriver(order) {
   return collection.insertOne(order);
 }
 
+async function getBalance(driverPsid) {
+  const driver = await findDriver({ Psid: driverPsid });
+  return parseInt(driver.balance);
+}
+
 async function isDriver(senderPsid) {
   const database = await connectToDatabase();
   const collection = database.collection("driver");
@@ -36,4 +41,5 @@ module.exports = {
   updateDriver,
   createDriver,
   isDriver,
+  getBalance,
 };

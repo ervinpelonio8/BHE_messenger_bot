@@ -31,9 +31,16 @@ async function orderExists(orderNumber) {
   return record != null;
 }
 
+async function hasPendingOrders() {
+  const record = await findOrder({
+    withRider: false,
+  });
+  return record != null;
+}
 module.exports = {
   findOrder,
   updateOrder,
   createOrder,
   orderExists,
+  hasPendingOrders,
 };

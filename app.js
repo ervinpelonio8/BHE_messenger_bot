@@ -7,6 +7,7 @@ const {
   createOrder,
   updateOrder,
   orderExists,
+  hasPendingOrders,
 } = require("./orderUtils");
 const {
   findOrderTracking,
@@ -18,6 +19,7 @@ const {
   updateDriver,
   createDriver,
   isDriver,
+  getBalance,
 } = require("./driverUtils");
 const {
   findDriverUserPair,
@@ -26,6 +28,7 @@ const {
   getDriverActiveTransaction,
   getUserActiveTransaction,
   isOrderAssigned,
+  appendMessage,
 } = require("./orderTransactionUtils");
 const {
   findUser,
@@ -48,6 +51,7 @@ const {
   sendOrderDoesNotExist,
   sendPendingOrdersToVacantDriver,
   sendOrderCompleted,
+  sendBalanceToDriver,
 } = require("./messageSendingUtils");
 
 const express = require("express"),
@@ -103,7 +107,26 @@ app.post("/webhook", async (req, res) => {
                   webhookEvent.message.text
                 ))
               ) {
-                sendGenericMessage(senderPsid, "IDLE_DRIVER_MESSAGE");
+                if (
+                  await handleBalanceInquiry(
+                    senderPsid,
+                    webhookEvent.message.text
+                  )
+                ) {
+                  return;
+                }
+                const ratePerTransaction = parseInt(
+                  await getSetting("RATE_PER_TRANSACTION")
+                );
+                if ((await getBalance(senderPsid)) < ratePerTransaction) {
+                  await sendGenericMessage(senderPsid, "DRIVER_NO_BALANCE");
+                  return;
+                }
+                if (await hasPendingOrders()) {
+                  await sendPendingOrdersToVacantDriver(senderPsid);
+                } else {
+                  await sendGenericMessage(senderPsid, "IDLE_DRIVER_MESSAGE");
+                }
               }
             } else {
               if (
@@ -123,6 +146,11 @@ app.post("/webhook", async (req, res) => {
               const responseToUser = {
                 text: webhookEvent.message.text,
               };
+              appendMessage(
+                "driver",
+                driverTransaction._id,
+                webhookEvent.message.text
+              );
               callSendAPI(driverTransaction.user, responseToUser);
             }
           } else {
@@ -158,19 +186,43 @@ app.post("/webhook", async (req, res) => {
                   userTransaction.driver,
                   userTransaction.orderNumber
                 );
+
                 await sendGenericMessage(
                   userTransaction.user,
                   "THANK_YOU_MESSAGE"
                 );
+                const ratePerTransaction = parseInt(
+                  await getSetting("RATE_PER_TRANSACTION")
+                );
+
                 await updateDriver(
                   { Psid: userTransaction.driver },
-                  { $set: { status: "Vacant" } }
+                  {
+                    $set: { status: "Vacant" },
+                    $inc: { balance: -ratePerTransaction }, // Subtracts ratePerTransaction from balance
+                  }
                 );
-                await sendPendingOrdersToVacantDriver(userTransaction.driver);
+                sendBalanceToDriver(userTransaction.driver);
+                if (
+                  (await getBalance(userTransaction.driver)) <
+                  ratePerTransaction
+                ) {
+                  await sendGenericMessage(
+                    userTransaction.driver,
+                    "DRIVER_NO_BALANCE"
+                  );
+                } else {
+                  await sendPendingOrdersToVacantDriver(userTransaction.driver);
+                }
               } else {
                 const responseToUser = {
                   text: webhookEvent.message.text,
                 };
+                appendMessage(
+                  "user",
+                  userTransaction._id,
+                  webhookEvent.message.text
+                );
                 callSendAPI(userTransaction.driver, responseToUser);
               }
             }
@@ -185,6 +237,14 @@ app.post("/webhook", async (req, res) => {
     res.sendStatus(404);
   }
 });
+
+async function handleBalanceInquiry(senderPsid, message) {
+  if (message.toLowerCase() == "bal") {
+    sendBalanceToDriver(senderPsid);
+    return true;
+  }
+  return false;
+}
 
 async function handleOrderCancelled(senderPsid, message) {
   if (message.toLowerCase() == "cancel order") {
@@ -275,6 +335,7 @@ async function handleStartTransaction(senderPsid, message) {
       );
       await sendGenericMessage(senderPsid, "ORDER_START");
       await createOrderTracking(senderPsid);
+      return;
     }
     if (orderTrackingRecord.state == 1) {
       if (message.toLowerCase() === "grocery") {
@@ -381,6 +442,7 @@ async function startDriverUserTransaction(driver, orderNumber) {
     driver: driver,
     user: orderRecord.user,
     orderNumber: orderRecord.orderNumber,
+    messages: [],
     status: "Ongoing",
   });
 
@@ -404,9 +466,11 @@ async function handleDriverRegistration(senderPsid, message) {
         // last_name: last_name,
         status: "Vacant",
         verified: false,
+        balance: 0,
       });
       await sendGenericMessage(senderPsid, "DRIVER_SUCCESSFUL_REGISTRATION");
-      await sendPendingOrdersToVacantDriver(senderPsid);
+      // await sendPendingOrdersToVacantDriver(senderPsid);
+      await sendGenericMessage(senderPsid, "NEW_DRIVER_BALANCE_INFO");
     }
     return true;
   }

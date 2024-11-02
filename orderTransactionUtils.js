@@ -34,6 +34,26 @@ async function getDriverActiveTransaction(driverPsid) {
   return record;
 }
 
+async function appendMessage(from, transactionId, message) {
+  const database = await connectToDatabase();
+  const collection = database.collection("driver_user_pair");
+
+  // Construct the message object
+  const newMessage = {
+    from,
+    message,
+    timestamp: new Date(), // Optional, to record the time of the message
+  };
+
+  // Update the document
+  const result = await collection.updateOne(
+    { _id: transactionId }, // Assuming transactionId maps to orderNumber
+    { $push: { messages: newMessage } }
+  );
+
+  return result;
+}
+
 async function getUserActiveTransaction(userPsid) {
   const database = await connectToDatabase();
   const collection = database.collection("driver_user_pair");
@@ -60,4 +80,5 @@ module.exports = {
   getDriverActiveTransaction,
   getUserActiveTransaction,
   isOrderAssigned,
+  appendMessage,
 };

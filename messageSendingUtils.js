@@ -50,7 +50,12 @@ async function broadcastNewOrder(orderNumber, type, details) {
 async function broadcastMessageToAvailableRiders(message) {
   const database = await connectToDatabase();
   const driverCollection = database.collection("driver");
-  const cursor = driverCollection.find({ status: "Vacant" });
+
+  const cursor = driverCollection.find({
+    status: "Vacant",
+    balance: { $gt: 0 },
+  });
+
   await cursor.forEach((doc) => {
     callSendAPI(doc.Psid, message);
   });
@@ -100,6 +105,17 @@ async function sendOrderCompleted(recepientPsid, orderNumber) {
   callSendAPI(recepientPsid, orderCompletedResponse);
 }
 
+async function sendBalanceToDriver(driverPsid) {
+  const driverBalanceMessage = await getSetting("DRIVER_BALANCE");
+  const database = await connectToDatabase();
+  const collection = database.collection("driver");
+  const driver = await collection.findOne({ Psid: driverPsid });
+  const driverBalanceResponse = {
+    text: util.format(driverBalanceMessage, driver.balance),
+  };
+  callSendAPI(driverPsid, driverBalanceResponse);
+}
+
 async function sendOrderAssignedToDriver(recepientPsid, driverName) {
   const orderAssignedMessage = await getSetting("ORDER_ASSIGNED_TO_DRIVER");
   const orderAssignedResponse = {
@@ -113,6 +129,7 @@ async function sendPendingOrdersToVacantDriver(driverPsid) {
   const orderCollection = database.collection("order");
   const orderQuery = {
     withRider: false,
+    isCancelled: false,
   };
 
   // Fetch the documents
@@ -193,4 +210,5 @@ module.exports = {
   sendOrderDoesNotExist,
   sendPendingOrdersToVacantDriver,
   sendOrderCompleted,
+  sendBalanceToDriver,
 };
