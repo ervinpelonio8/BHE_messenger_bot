@@ -52,6 +52,7 @@ const {
   sendPendingOrdersToVacantDriver,
   sendOrderCompleted,
   sendBalanceToDriver,
+  sendRideAssigned,
 } = require("./messageSendingUtils");
 
 const express = require("express"),
@@ -151,7 +152,7 @@ app.post("/webhook", async (req, res) => {
                 driverTransaction._id,
                 webhookEvent.message.text
               );
-              callSendAPI(driverTransaction.user, responseToUser);
+              await callSendAPI(driverTransaction.user, responseToUser);
             }
           } else {
             const userTransaction = await getUserActiveTransaction(senderPsid);
@@ -164,7 +165,7 @@ app.post("/webhook", async (req, res) => {
             } else {
               if (
                 userTransaction.status.toLowerCase() === "delivered" &&
-                webhookEvent.message.text.toLowerCase() === "undelivered"
+                webhookEvent.message.text.toLowerCase() === "mistake"
               ) {
                 await updateDriverUserPair(
                   { _id: userTransaction._id },
@@ -176,7 +177,9 @@ app.post("/webhook", async (req, res) => {
                 );
               } else if (
                 userTransaction.status.toLowerCase() === "delivered" &&
-                webhookEvent.message.text.toLowerCase() === "order completed"
+                (webhookEvent.message.text.toLowerCase() ===
+                  "order completed" ||
+                  webhookEvent.message.text.toLowerCase() === "ride completed")
               ) {
                 await updateDriverUserPair(
                   { _id: userTransaction._id },
@@ -223,7 +226,7 @@ app.post("/webhook", async (req, res) => {
                   userTransaction._id,
                   webhookEvent.message.text
                 );
-                callSendAPI(userTransaction.driver, responseToUser);
+                await callSendAPI(userTransaction.driver, responseToUser);
               }
             }
           }
@@ -247,7 +250,10 @@ async function handleBalanceInquiry(senderPsid, message) {
 }
 
 async function handleOrderCancelled(senderPsid, message) {
-  if (message.toLowerCase() == "cancel order") {
+  if (
+    message.toLowerCase() == "cancel order" ||
+    message.toLowerCase() == "cancel ride"
+  ) {
     const record = await findDriverUserPair({
       driver: senderPsid,
       status: "Ongoing",
@@ -340,10 +346,22 @@ async function handleStartTransaction(senderPsid, message) {
     if (orderTrackingRecord.state == 1) {
       if (message.toLowerCase() === "grocery") {
         await sendGenericMessage(senderPsid, "GROCERY_INSTRUCTIONS");
-        await updateOrderTrackingState({ user: senderPsid, type: message }, 2);
+        await updateOrderTrackingState(
+          { user: senderPsid, type: message.toLowerCase() },
+          2
+        );
       } else if (message.toLowerCase() === "food delivery") {
         await sendGenericMessage(senderPsid, "FOOD_DELIVERY_INSTRUCTIONS");
-        await updateOrderTrackingState({ user: senderPsid, type: message }, 2);
+        await updateOrderTrackingState(
+          { user: senderPsid, type: message.toLowerCase() },
+          2
+        );
+      } else if (message.toLowerCase() === "ride") {
+        await sendGenericMessage(senderPsid, "RIDE_INSTRUCTIONS");
+        await updateOrderTrackingState(
+          { user: senderPsid, type: message.toLowerCase() },
+          2
+        );
       } else {
         await sendGenericMessage(senderPsid, "SPECIFY_ORDER_TYPE");
       }
@@ -369,7 +387,10 @@ async function handleStartTransaction(senderPsid, message) {
 }
 
 async function handleOrderDelivered(senderPsid, message) {
-  if (message.toLowerCase() === "order delivered") {
+  if (
+    message.toLowerCase() === "order delivered" ||
+    message.toLowerCase() === "passenger delivered"
+  ) {
     const record = await updateDriverUserPair(
       {
         driver: senderPsid,
@@ -377,7 +398,11 @@ async function handleOrderDelivered(senderPsid, message) {
       },
       { $set: { status: "Delivered" } }
     );
-    sendGenericMessage(record.user, "ORDER_DELIVERED");
+    if (message.toLowerCase() === "passenger delivered") {
+      sendGenericMessage(record.user, "PASSENGER_DELIVERED");
+    } else {
+      sendGenericMessage(record.user, "ORDER_DELIVERED");
+    }
     return true;
   }
   return false;
@@ -409,7 +434,11 @@ async function handleOrderAssignment(senderPsid, message) {
         }
       );
       await startDriverUserTransaction(senderPsid, orderNumber);
-      await sendOrderAssigned(senderPsid, orderNumber);
+      if (order.orderType.toLowerCase() === "ride") {
+        await sendRideAssigned(senderPsid, orderNumber);
+      } else {
+        await sendOrderAssigned(senderPsid, orderNumber);
+      }
       await sendOrderAssignedToDriver(
         order.user,
         driver.first_name + " " + driver.last_name

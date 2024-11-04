@@ -12,7 +12,7 @@ async function sendGenericMessage(recepientPsid, messageKeyword) {
   const response = {
     text: message,
   };
-  callSendAPI(recepientPsid, response);
+  await callSendAPI(recepientPsid, response);
 }
 
 async function sendUndeliveredMessage(recepientPsid, orderNumber) {
@@ -20,7 +20,7 @@ async function sendUndeliveredMessage(recepientPsid, orderNumber) {
   const response = {
     text: util.format(message, orderNumber),
   };
-  callSendAPI(recepientPsid, response);
+  await callSendAPI(recepientPsid, response);
 }
 
 async function broadcastDriverOrderAssignment(orderNumber) {
@@ -56,8 +56,8 @@ async function broadcastMessageToAvailableRiders(message) {
     balance: { $gt: 0 },
   });
 
-  await cursor.forEach((doc) => {
-    callSendAPI(doc.Psid, message);
+  await cursor.forEach(async (doc) => {
+    await callSendAPI(doc.Psid, message);
   });
 }
 
@@ -78,7 +78,7 @@ async function sendOrderAlreadyAssigned(recepientPsid, orderNumber) {
   const alreadyAssignedResponse = {
     text: util.format(alreadyAssignedMessage, orderNumber),
   };
-  callSendAPI(recepientPsid, alreadyAssignedResponse);
+  await callSendAPI(recepientPsid, alreadyAssignedResponse);
 }
 
 async function sendOrderDoesNotExist(recepientPsid, orderNumber) {
@@ -86,7 +86,7 @@ async function sendOrderDoesNotExist(recepientPsid, orderNumber) {
   const orderDoesNotExistResponse = {
     text: util.format(orderDoesNotExistMessage, orderNumber),
   };
-  callSendAPI(recepientPsid, orderDoesNotExistResponse);
+  await callSendAPI(recepientPsid, orderDoesNotExistResponse);
 }
 
 async function sendOrderAssigned(recepientPsid, orderNumber) {
@@ -94,7 +94,15 @@ async function sendOrderAssigned(recepientPsid, orderNumber) {
   const orderAssignedResponse = {
     text: util.format(orderAssignedMessage, orderNumber),
   };
-  callSendAPI(recepientPsid, orderAssignedResponse);
+  await callSendAPI(recepientPsid, orderAssignedResponse);
+}
+
+async function sendRideAssigned(recepientPsid, orderNumber) {
+  const rideAssignedMessage = await getSetting("RIDE_ASSIGNED_MESSAGE");
+  const rideAssignedResponse = {
+    text: util.format(rideAssignedMessage, orderNumber),
+  };
+  await callSendAPI(recepientPsid, rideAssignedResponse);
 }
 
 async function sendOrderCompleted(recepientPsid, orderNumber) {
@@ -102,7 +110,7 @@ async function sendOrderCompleted(recepientPsid, orderNumber) {
   const orderCompletedResponse = {
     text: util.format(orderCompletedMessage, orderNumber),
   };
-  callSendAPI(recepientPsid, orderCompletedResponse);
+  await callSendAPI(recepientPsid, orderCompletedResponse);
 }
 
 async function sendBalanceToDriver(driverPsid) {
@@ -113,7 +121,7 @@ async function sendBalanceToDriver(driverPsid) {
   const driverBalanceResponse = {
     text: util.format(driverBalanceMessage, driver.balance),
   };
-  callSendAPI(driverPsid, driverBalanceResponse);
+  await callSendAPI(driverPsid, driverBalanceResponse);
 }
 
 async function sendOrderAssignedToDriver(recepientPsid, driverName) {
@@ -121,7 +129,7 @@ async function sendOrderAssignedToDriver(recepientPsid, driverName) {
   const orderAssignedResponse = {
     text: util.format(orderAssignedMessage, driverName),
   };
-  callSendAPI(recepientPsid, orderAssignedResponse);
+  await callSendAPI(recepientPsid, orderAssignedResponse);
 }
 
 async function sendPendingOrdersToVacantDriver(driverPsid) {
@@ -146,7 +154,7 @@ async function sendPendingOrdersToVacantDriver(driverPsid) {
         order.details
       ),
     };
-    callSendAPI(driverPsid, newOrderResponse);
+    await callSendAPI(driverPsid, newOrderResponse);
   });
 }
 
@@ -157,7 +165,7 @@ async function sendOrderCancelledInfoToDriver(recepientPsid, orderNumber) {
   const orderAssignedResponse = {
     text: util.format(orderAssignedMessage, orderNumber),
   };
-  callSendAPI(recepientPsid, orderAssignedResponse);
+  await callSendAPI(recepientPsid, orderAssignedResponse);
 }
 
 // Sends response messages via the Send API
@@ -211,4 +219,5 @@ module.exports = {
   sendPendingOrdersToVacantDriver,
   sendOrderCompleted,
   sendBalanceToDriver,
+  sendRideAssigned,
 };
