@@ -18,10 +18,10 @@ async function updateDriver(filter, update) {
   });
 }
 
-async function createDriver(order) {
+async function createDriver(driver) {
   const database = await connectToDatabase();
   const collection = database.collection("driver");
-  return collection.insertOne(order);
+  return collection.insertOne(driver);
 }
 
 async function getBalance(driverPsid) {

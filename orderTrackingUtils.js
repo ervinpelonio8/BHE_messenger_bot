@@ -26,6 +26,7 @@ async function createOrderTracking(userPsid) {
     state: 1,
     type: "",
     details: "",
+    dateCreated: new Date(),
   });
 }
 

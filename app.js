@@ -1,5 +1,5 @@
 "use strict";
-
+const util = require("util");
 // Use dotenv to read .env vars into Node
 require("dotenv").config();
 const {
@@ -53,7 +53,17 @@ const {
   sendOrderCompleted,
   sendBalanceToDriver,
   sendRideAssigned,
+  sendQuickReplyMessage,
 } = require("./messageSendingUtils");
+
+const {
+  chooseServiceQuickReply,
+  cancelOrderUserQuickReply,
+  driverRideConvoQuickReply,
+  driverOrderConvoQuickReply,
+  userRideCompletedQuickReply,
+  userOrderDeliveredQuickReply,
+} = require("./constants.js");
 
 const express = require("express"),
   app = express(),
@@ -85,11 +95,15 @@ app.get("/webhook", (req, res) => {
 
 app.post("/webhook", async (req, res) => {
   let body = req.body;
+  // console.log(
+  //   util.inspect(body, { showHidden: false, depth: null, colors: true })
+  // );
+
   if (body.object === "page") {
     body.entry.forEach(async (entry) => {
       let webhookEvent = entry.messaging[0];
       let senderPsid = webhookEvent.sender.id;
-      if (webhookEvent.message) {
+      if (webhookEvent.message && !webhookEvent.message.is_echo) {
         const driverRegistrationRes = await handleDriverRegistration(
           senderPsid,
           webhookEvent.message
@@ -165,15 +179,24 @@ app.post("/webhook", async (req, res) => {
             } else {
               if (
                 userTransaction.status.toLowerCase() === "delivered" &&
-                webhookEvent.message.text.toLowerCase() === "mistake"
+                (webhookEvent.message.text.toLowerCase() === "mistake" ||
+                  webhookEvent.message.text.toLowerCase() ===
+                    "must be a mistake")
               ) {
                 await updateDriverUserPair(
                   { _id: userTransaction._id },
                   { $set: { status: "Ongoing" } }
                 );
+                const order = await findOrder({
+                  orderNumber: userTransaction.orderNumber,
+                });
+
                 await sendUndeliveredMessage(
                   userTransaction.driver,
-                  userTransaction.orderNumber
+                  userTransaction.orderNumber,
+                  order.orderType.toLowerCase() === "ride"
+                    ? driverRideConvoQuickReply
+                    : driverOrderConvoQuickReply
                 );
               } else if (
                 userTransaction.status.toLowerCase() === "delivered" &&
@@ -218,8 +241,15 @@ app.post("/webhook", async (req, res) => {
                   await sendPendingOrdersToVacantDriver(userTransaction.driver);
                 }
               } else {
+                const order = await findOrder({
+                  orderNumber: userTransaction.orderNumber,
+                });
                 const responseToUser = {
                   text: webhookEvent.message.text,
+                  quick_replies:
+                    order.orderType.toLowerCase() === "ride"
+                      ? driverRideConvoQuickReply
+                      : driverOrderConvoQuickReply,
                 };
                 appendMessage(
                   "user",
@@ -313,7 +343,7 @@ async function handleUserRegistration(Psid) {
   const userRecord = await findUser({ Psid: Psid });
   if (userRecord == null) {
     // const userInfo = await getUserInformation(Psid);
-    await createUser({ Psid: Psid });
+    await createUser({ Psid: Psid, dateCreated: new Date() });
   }
 }
 async function handleStartTransaction(senderPsid, message) {
@@ -323,7 +353,11 @@ async function handleStartTransaction(senderPsid, message) {
   });
   if (orderTrackingRecord == null) {
     await handleUserRegistration(senderPsid);
-    await sendGenericMessage(senderPsid, "ORDER_START");
+    await sendQuickReplyMessage(
+      senderPsid,
+      "ORDER_START",
+      chooseServiceQuickReply
+    );
     await createOrderTracking(senderPsid);
   } else {
     if (message.toLowerCase() === "cancel order") {
@@ -339,7 +373,11 @@ async function handleStartTransaction(senderPsid, message) {
         senderPsid,
         "USER_ORDER_CANCELLATION_ACKNOWLEDGEMENT"
       );
-      await sendGenericMessage(senderPsid, "ORDER_START");
+      await sendQuickReplyMessage(
+        senderPsid,
+        "ORDER_START",
+        chooseServiceQuickReply
+      );
       await createOrderTracking(senderPsid);
       return;
     }
@@ -363,7 +401,11 @@ async function handleStartTransaction(senderPsid, message) {
           2
         );
       } else {
-        await sendGenericMessage(senderPsid, "SPECIFY_ORDER_TYPE");
+        await sendQuickReplyMessage(
+          senderPsid,
+          "SPECIFY_ORDER_TYPE",
+          chooseServiceQuickReply
+        );
       }
     } else if (orderTrackingRecord.state == 2) {
       await updateOrderTrackingState({ user: senderPsid, details: message }, 3);
@@ -376,12 +418,21 @@ async function handleStartTransaction(senderPsid, message) {
         isCancelled: false,
         orderNumber: orderNumber,
         withRider: false,
+        dateCreated: new Date(),
       });
 
       await broadcastNewOrder(orderNumber, orderTrackingRecord.type, message);
-      await sendGenericMessage(senderPsid, "WAITING_FOR_RIDER");
+      await sendQuickReplyMessage(
+        senderPsid,
+        "WAITING_FOR_RIDER",
+        cancelOrderUserQuickReply
+      );
     } else if (orderTrackingRecord.state == 3) {
-      await sendGenericMessage(senderPsid, "WAITING_FOR_RIDER");
+      await sendQuickReplyMessage(
+        senderPsid,
+        "WAITING_FOR_RIDER",
+        cancelOrderUserQuickReply
+      );
     }
   }
 }
@@ -399,9 +450,17 @@ async function handleOrderDelivered(senderPsid, message) {
       { $set: { status: "Delivered" } }
     );
     if (message.toLowerCase() === "passenger delivered") {
-      sendGenericMessage(record.user, "PASSENGER_DELIVERED");
+      await sendQuickReplyMessage(
+        record.user,
+        "PASSENGER_DELIVERED",
+        userRideCompletedQuickReply
+      );
     } else {
-      sendGenericMessage(record.user, "ORDER_DELIVERED");
+      await sendQuickReplyMessage(
+        record.user,
+        "ORDER_DELIVERED",
+        userOrderDeliveredQuickReply
+      );
     }
     return true;
   }
@@ -473,6 +532,7 @@ async function startDriverUserTransaction(driver, orderNumber) {
     orderNumber: orderRecord.orderNumber,
     messages: [],
     status: "Ongoing",
+    dateCreated: new Date(),
   });
 
   const filter = { Psid: driver };
@@ -496,9 +556,9 @@ async function handleDriverRegistration(senderPsid, message) {
         status: "Vacant",
         verified: false,
         balance: 0,
+        dateCreated: new Date(),
       });
       await sendGenericMessage(senderPsid, "DRIVER_SUCCESSFUL_REGISTRATION");
-      // await sendPendingOrdersToVacantDriver(senderPsid);
       await sendGenericMessage(senderPsid, "NEW_DRIVER_BALANCE_INFO");
     }
     return true;

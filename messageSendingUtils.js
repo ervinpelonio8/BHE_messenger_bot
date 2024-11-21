@@ -6,6 +6,10 @@ const request = require("request"),
 
 const util = require("util");
 const { connectToDatabase } = require("./db.js");
+const {
+  driverRideConvoQuickReply,
+  driverOrderConvoQuickReply,
+} = require("./constants.js");
 
 async function sendGenericMessage(recepientPsid, messageKeyword) {
   const message = await getSetting(messageKeyword);
@@ -15,10 +19,34 @@ async function sendGenericMessage(recepientPsid, messageKeyword) {
   await callSendAPI(recepientPsid, response);
 }
 
-async function sendUndeliveredMessage(recepientPsid, orderNumber) {
+async function sendQuickReplyMessage(
+  recepientPsid,
+  messageKeyword,
+  quick_replies,
+  isGenericMessage = true
+) {
+  let message = "";
+  if (isGenericMessage) {
+    message = await getSetting(messageKeyword);
+  } else {
+    message = messageKeyword;
+  }
+  const response = {
+    text: message,
+    quick_replies: quick_replies,
+  };
+  await callSendAPI(recepientPsid, response);
+}
+
+async function sendUndeliveredMessage(
+  recepientPsid,
+  orderNumber,
+  quick_replies
+) {
   const message = await getSetting("DELIVERY_UNCONFIRMED");
   const response = {
     text: util.format(message, orderNumber),
+    quick_replies: quick_replies,
   };
   await callSendAPI(recepientPsid, response);
 }
@@ -93,6 +121,7 @@ async function sendOrderAssigned(recepientPsid, orderNumber) {
   const orderAssignedMessage = await getSetting("ORDER_ASSIGNED_MESSAGE");
   const orderAssignedResponse = {
     text: util.format(orderAssignedMessage, orderNumber),
+    quick_replies: driverOrderConvoQuickReply,
   };
   await callSendAPI(recepientPsid, orderAssignedResponse);
 }
@@ -101,6 +130,7 @@ async function sendRideAssigned(recepientPsid, orderNumber) {
   const rideAssignedMessage = await getSetting("RIDE_ASSIGNED_MESSAGE");
   const rideAssignedResponse = {
     text: util.format(rideAssignedMessage, orderNumber),
+    quick_replies: driverRideConvoQuickReply,
   };
   await callSendAPI(recepientPsid, rideAssignedResponse);
 }
@@ -207,6 +237,7 @@ module.exports = {
   broadcastDriverOrderAssignment,
   broadcastMessageToAvailableRiders,
   sendGenericMessage,
+  sendQuickReplyMessage,
   sendOrderAlreadyAssigned,
   sendOrderAssigned,
   broadcastUserOrderCancellation,
