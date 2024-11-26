@@ -9,6 +9,7 @@ const { connectToDatabase } = require("./db.js");
 const {
   driverRideConvoQuickReply,
   driverOrderConvoQuickReply,
+  driverPackageConvoQuickReply,
 } = require("./constants.js");
 
 async function sendGenericMessage(recepientPsid, messageKeyword) {
@@ -70,7 +71,7 @@ async function broadcastUserOrderCancellation(orderNumber) {
 async function broadcastNewOrder(orderNumber, type, details) {
   const newOrderMessage = await getSetting("NEW_ORDER_BROADCAST");
   const newOrderResponse = {
-    text: util.format(newOrderMessage, orderNumber, type, details),
+    text: util.format(newOrderMessage, orderNumber, type, details, orderNumber),
   };
   await broadcastMessageToAvailableRiders(newOrderResponse);
 }
@@ -124,6 +125,15 @@ async function sendOrderAssigned(recepientPsid, orderNumber) {
     quick_replies: driverOrderConvoQuickReply,
   };
   await callSendAPI(recepientPsid, orderAssignedResponse);
+}
+
+async function sendPackageAssigned(recepientPsid, orderNumber) {
+  const packageAssignedMessage = await getSetting("PACKAGE_ASSIGNED_MESSAGE");
+  const packageAssignedResponse = {
+    text: util.format(packageAssignedMessage, orderNumber),
+    quick_replies: driverPackageConvoQuickReply,
+  };
+  await callSendAPI(recepientPsid, packageAssignedResponse);
 }
 
 async function sendRideAssigned(recepientPsid, orderNumber) {
@@ -181,7 +191,8 @@ async function sendPendingOrdersToVacantDriver(driverPsid) {
         newOrderMessage,
         order.orderNumber,
         order.orderType,
-        order.details
+        order.details,
+        order.orderNumber
       ),
     };
     await callSendAPI(driverPsid, newOrderResponse);
@@ -251,4 +262,5 @@ module.exports = {
   sendOrderCompleted,
   sendBalanceToDriver,
   sendRideAssigned,
+  sendPackageAssigned,
 };

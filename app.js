@@ -54,6 +54,7 @@ const {
   sendBalanceToDriver,
   sendRideAssigned,
   sendQuickReplyMessage,
+  sendPackageAssigned,
 } = require("./messageSendingUtils");
 
 const {
@@ -63,6 +64,8 @@ const {
   driverOrderConvoQuickReply,
   userRideCompletedQuickReply,
   userOrderDeliveredQuickReply,
+  driverPackageConvoQuickReply,
+  userPackageReceivedQuickReply,
 } = require("./constants.js");
 
 const express = require("express"),
@@ -177,79 +180,129 @@ app.post("/webhook", async (req, res) => {
                 webhookEvent.message.text
               );
             } else {
-              if (
-                userTransaction.status.toLowerCase() === "delivered" &&
-                (webhookEvent.message.text.toLowerCase() === "mistake" ||
-                  webhookEvent.message.text.toLowerCase() ===
-                    "must be a mistake")
-              ) {
-                await updateDriverUserPair(
-                  { _id: userTransaction._id },
-                  { $set: { status: "Ongoing" } }
-                );
-                const order = await findOrder({
-                  orderNumber: userTransaction.orderNumber,
-                });
-
-                await sendUndeliveredMessage(
-                  userTransaction.driver,
-                  userTransaction.orderNumber,
-                  order.orderType.toLowerCase() === "ride"
-                    ? driverRideConvoQuickReply
-                    : driverOrderConvoQuickReply
-                );
-              } else if (
-                userTransaction.status.toLowerCase() === "delivered" &&
-                (webhookEvent.message.text.toLowerCase() ===
-                  "order completed" ||
-                  webhookEvent.message.text.toLowerCase() === "ride completed")
-              ) {
-                await updateDriverUserPair(
-                  { _id: userTransaction._id },
-                  { $set: { status: "Completed" } }
-                );
-                await sendOrderCompleted(
-                  userTransaction.driver,
-                  userTransaction.orderNumber
-                );
-
-                await sendGenericMessage(
-                  userTransaction.user,
-                  "THANK_YOU_MESSAGE"
-                );
-                const ratePerTransaction = parseInt(
-                  await getSetting("RATE_PER_TRANSACTION")
-                );
-
-                await updateDriver(
-                  { Psid: userTransaction.driver },
-                  {
-                    $set: { status: "Vacant" },
-                    $inc: { balance: -ratePerTransaction }, // Subtracts ratePerTransaction from balance
-                  }
-                );
-                sendBalanceToDriver(userTransaction.driver);
+              if (userTransaction.status.toLowerCase() === "delivered") {
                 if (
-                  (await getBalance(userTransaction.driver)) <
-                  ratePerTransaction
+                  webhookEvent.message.text.toLowerCase() === "mistake" ||
+                  webhookEvent.message.text.toLowerCase() ===
+                    "must be a mistake"
                 ) {
-                  await sendGenericMessage(
-                    userTransaction.driver,
-                    "DRIVER_NO_BALANCE"
+                  await updateDriverUserPair(
+                    { _id: userTransaction._id },
+                    { $set: { status: "Ongoing" } }
                   );
+                  const order = await findOrder({
+                    orderNumber: userTransaction.orderNumber,
+                  });
+
+                  if (order.orderType.toLowerCase() === "ride") {
+                    await sendUndeliveredMessage(
+                      userTransaction.driver,
+                      userTransaction.orderNumber,
+                      driverRideConvoQuickReply
+                    );
+                  } else if (
+                    order.orderType.toLowerCase() === "package delivery"
+                  ) {
+                    await sendUndeliveredMessage(
+                      userTransaction.driver,
+                      userTransaction.orderNumber,
+                      driverPackageConvoQuickReply
+                    );
+                  } else {
+                    await sendUndeliveredMessage(
+                      userTransaction.driver,
+                      userTransaction.orderNumber,
+                      driverOrderConvoQuickReply
+                    );
+                  }
+                } else if (
+                  webhookEvent.message.text.toLowerCase() ===
+                    "order received" ||
+                  webhookEvent.message.text.toLowerCase() ===
+                    "ride completed" ||
+                  webhookEvent.message.text.toLowerCase() === "package received"
+                ) {
+                  await updateDriverUserPair(
+                    { _id: userTransaction._id },
+                    { $set: { status: "Completed" } }
+                  );
+                  await sendOrderCompleted(
+                    userTransaction.driver,
+                    userTransaction.orderNumber
+                  );
+
+                  await sendGenericMessage(
+                    userTransaction.user,
+                    "THANK_YOU_MESSAGE"
+                  );
+                  const ratePerTransaction = parseInt(
+                    await getSetting("RATE_PER_TRANSACTION")
+                  );
+
+                  await updateDriver(
+                    { Psid: userTransaction.driver },
+                    {
+                      $set: { status: "Vacant" },
+                      $inc: { balance: -ratePerTransaction }, // Subtracts ratePerTransaction from balance
+                    }
+                  );
+                  sendBalanceToDriver(userTransaction.driver);
+                  if (
+                    (await getBalance(userTransaction.driver)) <
+                    ratePerTransaction
+                  ) {
+                    await sendGenericMessage(
+                      userTransaction.driver,
+                      "DRIVER_NO_BALANCE"
+                    );
+                  } else {
+                    await sendPendingOrdersToVacantDriver(
+                      userTransaction.driver
+                    );
+                  }
                 } else {
-                  await sendPendingOrdersToVacantDriver(userTransaction.driver);
+                  const order = await findOrder({
+                    orderNumber: userTransaction.orderNumber,
+                  });
+                  const orderType = order.orderType.toLowerCase();
+                  if (orderType === "ride") {
+                    await sendQuickReplyMessage(
+                      userTransaction.user,
+                      "PASSENGER_DELIVERED",
+                      userRideCompletedQuickReply
+                    );
+                  } else if (orderType === "package delivery") {
+                    await sendQuickReplyMessage(
+                      userTransaction.user,
+                      "PACKAGE_DELIVERED",
+                      userPackageReceivedQuickReply
+                    );
+                  } else {
+                    await sendQuickReplyMessage(
+                      userTransaction.user,
+                      "ORDER_DELIVERED",
+                      userOrderDeliveredQuickReply
+                    );
+                  }
                 }
               } else {
+                // send message to driver
                 const order = await findOrder({
                   orderNumber: userTransaction.orderNumber,
                 });
+                let quick_replies = null;
+                if (order.orderType.toLowerCase() === "ride") {
+                  quick_replies = driverRideConvoQuickReply;
+                } else if (
+                  order.orderType.toLowerCase() === "package delivery"
+                ) {
+                  quick_replies = driverPackageConvoQuickReply;
+                } else {
+                  quick_replies = driverOrderConvoQuickReply;
+                }
                 const responseToUser = {
                   text: webhookEvent.message.text,
-                  quick_replies:
-                    order.orderType.toLowerCase() === "ride"
-                      ? driverRideConvoQuickReply
-                      : driverOrderConvoQuickReply,
+                  quick_replies: quick_replies,
                 };
                 appendMessage(
                   "user",
@@ -280,10 +333,7 @@ async function handleBalanceInquiry(senderPsid, message) {
 }
 
 async function handleOrderCancelled(senderPsid, message) {
-  if (
-    message.toLowerCase() == "cancel order" ||
-    message.toLowerCase() == "cancel ride"
-  ) {
+  if (message.toLowerCase() == "cancel order") {
     const record = await findDriverUserPair({
       driver: senderPsid,
       status: "Ongoing",
@@ -400,6 +450,12 @@ async function handleStartTransaction(senderPsid, message) {
           { user: senderPsid, type: message.toLowerCase() },
           2
         );
+      } else if (message.toLowerCase() === "package delivery") {
+        await sendGenericMessage(senderPsid, "PACKAGE_DELIVERY_INSTRUCTIONS");
+        await updateOrderTrackingState(
+          { user: senderPsid, type: message.toLowerCase() },
+          2
+        );
       } else {
         await sendQuickReplyMessage(
           senderPsid,
@@ -440,7 +496,8 @@ async function handleStartTransaction(senderPsid, message) {
 async function handleOrderDelivered(senderPsid, message) {
   if (
     message.toLowerCase() === "order delivered" ||
-    message.toLowerCase() === "passenger delivered"
+    message.toLowerCase() === "passenger delivered" ||
+    message.toLowerCase() === "package delivered"
   ) {
     const record = await updateDriverUserPair(
       {
@@ -455,11 +512,17 @@ async function handleOrderDelivered(senderPsid, message) {
         "PASSENGER_DELIVERED",
         userRideCompletedQuickReply
       );
-    } else {
+    } else if (message.toLowerCase() === "order delivered") {
       await sendQuickReplyMessage(
         record.user,
         "ORDER_DELIVERED",
         userOrderDeliveredQuickReply
+      );
+    } else {
+      await sendQuickReplyMessage(
+        record.user,
+        "PACKAGE_DELIVERED",
+        userPackageReceivedQuickReply
       );
     }
     return true;
@@ -495,6 +558,8 @@ async function handleOrderAssignment(senderPsid, message) {
       await startDriverUserTransaction(senderPsid, orderNumber);
       if (order.orderType.toLowerCase() === "ride") {
         await sendRideAssigned(senderPsid, orderNumber);
+      } else if (order.orderType.toLowerCase() === "package delivery") {
+        await sendPackageAssigned(senderPsid, orderNumber);
       } else {
         await sendOrderAssigned(senderPsid, orderNumber);
       }

@@ -14,6 +14,11 @@ const chooseServiceQuickReply = [
     title: "Ride",
     payload: "Ride",
   },
+  {
+    content_type: "text",
+    title: "Package Delivery",
+    payload: "Package Delivery",
+  },
 ];
 
 const cancelOrderUserQuickReply = [
@@ -37,6 +42,19 @@ const driverOrderConvoQuickReply = [
   },
 ];
 
+const driverPackageConvoQuickReply = [
+  {
+    content_type: "text",
+    title: "Package Delivered",
+    payload: "Package Delivered",
+  },
+  {
+    content_type: "text",
+    title: "Cancel Order",
+    payload: "Cancel Order",
+  },
+];
+
 const driverRideConvoQuickReply = [
   {
     content_type: "text",
@@ -45,16 +63,16 @@ const driverRideConvoQuickReply = [
   },
   {
     content_type: "text",
-    title: "Cancel Ride",
-    payload: "Cancel Ride",
+    title: "Cancel Order",
+    payload: "Cancel Order",
   },
 ];
 
 const userOrderDeliveredQuickReply = [
   {
     content_type: "text",
-    title: "Order Completed",
-    payload: "Order Completed",
+    title: "Order Received",
+    payload: "Order Received",
   },
   {
     content_type: "text",
@@ -76,6 +94,19 @@ const userRideCompletedQuickReply = [
   },
 ];
 
+const userPackageReceivedQuickReply = [
+  {
+    content_type: "text",
+    title: "Package Received",
+    payload: "Ride Completed",
+  },
+  {
+    content_type: "text",
+    title: "Must be a mistake",
+    payload: "Must be a mistake",
+  },
+];
+
 module.exports = {
   chooseServiceQuickReply,
   cancelOrderUserQuickReply,
@@ -83,4 +114,6 @@ module.exports = {
   driverRideConvoQuickReply,
   userOrderDeliveredQuickReply,
   userRideCompletedQuickReply,
+  userPackageReceivedQuickReply,
+  driverPackageConvoQuickReply,
 };
