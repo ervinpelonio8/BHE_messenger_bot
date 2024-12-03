@@ -60,11 +60,9 @@ const {
 const {
   chooseServiceQuickReply,
   cancelOrderUserQuickReply,
-  driverRideConvoQuickReply,
   driverOrderConvoQuickReply,
   userRideCompletedQuickReply,
   userOrderDeliveredQuickReply,
-  driverPackageConvoQuickReply,
   userPackageReceivedQuickReply,
 } = require("./constants.js");
 
@@ -98,9 +96,9 @@ app.get("/webhook", (req, res) => {
 
 app.post("/webhook", async (req, res) => {
   let body = req.body;
-  // console.log(
-  //   util.inspect(body, { showHidden: false, depth: null, colors: true })
-  // );
+  console.log(
+    util.inspect(body, { showHidden: false, depth: null, colors: true })
+  );
 
   if (body.object === "page") {
     body.entry.forEach(async (entry) => {
@@ -190,31 +188,11 @@ app.post("/webhook", async (req, res) => {
                     { _id: userTransaction._id },
                     { $set: { status: "Ongoing" } }
                   );
-                  const order = await findOrder({
-                    orderNumber: userTransaction.orderNumber,
-                  });
-
-                  if (order.orderType.toLowerCase() === "ride") {
-                    await sendUndeliveredMessage(
-                      userTransaction.driver,
-                      userTransaction.orderNumber,
-                      driverRideConvoQuickReply
-                    );
-                  } else if (
-                    order.orderType.toLowerCase() === "package delivery"
-                  ) {
-                    await sendUndeliveredMessage(
-                      userTransaction.driver,
-                      userTransaction.orderNumber,
-                      driverPackageConvoQuickReply
-                    );
-                  } else {
-                    await sendUndeliveredMessage(
-                      userTransaction.driver,
-                      userTransaction.orderNumber,
-                      driverOrderConvoQuickReply
-                    );
-                  }
+                  await sendUndeliveredMessage(
+                    userTransaction.driver,
+                    userTransaction.orderNumber,
+                    driverOrderConvoQuickReply
+                  );
                 } else if (
                   webhookEvent.message.text.toLowerCase() ===
                     "order received" ||
@@ -287,22 +265,9 @@ app.post("/webhook", async (req, res) => {
                 }
               } else {
                 // send message to driver
-                const order = await findOrder({
-                  orderNumber: userTransaction.orderNumber,
-                });
-                let quick_replies = null;
-                if (order.orderType.toLowerCase() === "ride") {
-                  quick_replies = driverRideConvoQuickReply;
-                } else if (
-                  order.orderType.toLowerCase() === "package delivery"
-                ) {
-                  quick_replies = driverPackageConvoQuickReply;
-                } else {
-                  quick_replies = driverOrderConvoQuickReply;
-                }
                 const responseToUser = {
                   text: webhookEvent.message.text,
-                  quick_replies: quick_replies,
+                  quick_replies: driverOrderConvoQuickReply,
                 };
                 appendMessage(
                   "user",
@@ -494,11 +459,7 @@ async function handleStartTransaction(senderPsid, message) {
 }
 
 async function handleOrderDelivered(senderPsid, message) {
-  if (
-    message.toLowerCase() === "order delivered" ||
-    message.toLowerCase() === "passenger delivered" ||
-    message.toLowerCase() === "package delivered"
-  ) {
+  if (message.toLowerCase() === "order delivered") {
     const record = await updateDriverUserPair(
       {
         driver: senderPsid,
@@ -506,13 +467,20 @@ async function handleOrderDelivered(senderPsid, message) {
       },
       { $set: { status: "Delivered" } }
     );
-    if (message.toLowerCase() === "passenger delivered") {
+    const order = await findOrder({
+      orderNumber: record.orderNumber,
+    });
+
+    if (order.orderType.toLowerCase() === "ride") {
       await sendQuickReplyMessage(
         record.user,
         "PASSENGER_DELIVERED",
         userRideCompletedQuickReply
       );
-    } else if (message.toLowerCase() === "order delivered") {
+    } else if (
+      order.orderType.toLowerCase() === "grocery" ||
+      order.orderType.toLowerCase() === "food delivery"
+    ) {
       await sendQuickReplyMessage(
         record.user,
         "ORDER_DELIVERED",

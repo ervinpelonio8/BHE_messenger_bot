@@ -42,32 +42,6 @@ const driverOrderConvoQuickReply = [
   },
 ];
 
-const driverPackageConvoQuickReply = [
-  {
-    content_type: "text",
-    title: "Package Delivered",
-    payload: "Package Delivered",
-  },
-  {
-    content_type: "text",
-    title: "Cancel Order",
-    payload: "Cancel Order",
-  },
-];
-
-const driverRideConvoQuickReply = [
-  {
-    content_type: "text",
-    title: "Passenger Delivered",
-    payload: "Passenger Delivered",
-  },
-  {
-    content_type: "text",
-    title: "Cancel Order",
-    payload: "Cancel Order",
-  },
-];
-
 const userOrderDeliveredQuickReply = [
   {
     content_type: "text",
@@ -111,9 +85,7 @@ module.exports = {
   chooseServiceQuickReply,
   cancelOrderUserQuickReply,
   driverOrderConvoQuickReply,
-  driverRideConvoQuickReply,
   userOrderDeliveredQuickReply,
   userRideCompletedQuickReply,
   userPackageReceivedQuickReply,
-  driverPackageConvoQuickReply,
 };

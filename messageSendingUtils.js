@@ -6,11 +6,7 @@ const request = require("request"),
 
 const util = require("util");
 const { connectToDatabase } = require("./db.js");
-const {
-  driverRideConvoQuickReply,
-  driverOrderConvoQuickReply,
-  driverPackageConvoQuickReply,
-} = require("./constants.js");
+const { driverOrderConvoQuickReply } = require("./constants.js");
 
 async function sendGenericMessage(recepientPsid, messageKeyword) {
   const message = await getSetting(messageKeyword);
@@ -131,7 +127,7 @@ async function sendPackageAssigned(recepientPsid, orderNumber) {
   const packageAssignedMessage = await getSetting("PACKAGE_ASSIGNED_MESSAGE");
   const packageAssignedResponse = {
     text: util.format(packageAssignedMessage, orderNumber),
-    quick_replies: driverPackageConvoQuickReply,
+    quick_replies: driverOrderConvoQuickReply,
   };
   await callSendAPI(recepientPsid, packageAssignedResponse);
 }
@@ -140,7 +136,7 @@ async function sendRideAssigned(recepientPsid, orderNumber) {
   const rideAssignedMessage = await getSetting("RIDE_ASSIGNED_MESSAGE");
   const rideAssignedResponse = {
     text: util.format(rideAssignedMessage, orderNumber),
-    quick_replies: driverRideConvoQuickReply,
+    quick_replies: driverOrderConvoQuickReply,
   };
   await callSendAPI(recepientPsid, rideAssignedResponse);
 }
@@ -211,8 +207,8 @@ async function sendOrderCancelledInfoToDriver(recepientPsid, orderNumber) {
 
 // Sends response messages via the Send API
 function callSendAPI(senderPsid, response) {
-  console.error("SenderPsid: ", senderPsid);
-  console.error("Response: ", response);
+  console.log("SenderPsid: ", senderPsid);
+  console.log("Response: ", response);
 
   // The page access token we have generated in your app settings
   const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
