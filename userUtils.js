@@ -19,8 +19,8 @@ async function updateUser(filter, update) {
   });
 }
 
-async function createUser(order) {
-  return collection.insertOne(order);
+async function createUser(user) {
+  return collection.insertOne(user);
 }
 
 async function getUserInformation(psid) {

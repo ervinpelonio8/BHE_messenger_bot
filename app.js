@@ -55,6 +55,7 @@ const {
   sendRideAssigned,
   sendQuickReplyMessage,
   sendPackageAssigned,
+  sendReloadConfirmation,
 } = require("./messageSendingUtils");
 
 const {
@@ -72,11 +73,76 @@ const express = require("express"),
 app.use(urlencoded({ extended: true }));
 
 const { connectToDatabase } = require("./db.js");
+const { createReloadHistory } = require("./reloadUtils.js");
 
 app.use(json());
 
 app.get("/", function (_req, res) {
   res.send("Hello World");
+});
+
+// GET request to display the form
+app.get("/reload", function (_req, res) {
+  res.send(`
+    <html>
+      <body>
+        <h1>Reload Account</h1>
+        <form action="/reload" method="POST">
+          <label for="firstName">First Name:</label><br>
+          <input type="text" id="firstName" name="firstName" required><br><br>
+          
+          <label for="lastName">Last Name:</label><br>
+          <input type="text" id="lastName" name="lastName" required><br><br>
+          
+          <label for="amount">Amount:</label><br>
+          <input type="number" id="amount" name="amount" required><br><br>
+          
+          <button type="submit">Submit</button>
+        </form>
+      </body>
+    </html>
+  `);
+});
+
+// POST request to process the submitted form data
+app.post("/reload", async function (req, res) {
+  const { firstName, lastName, amount } = req.body;
+  const driver = await findDriver({ firstName: firstName, lastName: lastName });
+  if (driver == null) {
+    res.send(`
+      <html>
+        <body>
+          <h3>Driver account does not exist. Please check details.</h3>
+        </body>
+      </html>
+    `);
+  } else {
+    const updatedDriver = await updateDriver(
+      { Psid: driver.Psid },
+      {
+        $inc: { balance: parseInt(amount) },
+      }
+    );
+    // send successully reloaded message
+    await sendReloadConfirmation(driver.Psid, amount, updatedDriver.balance);
+
+    // insert reload history
+    await createReloadHistory({
+      driverPsid: driver.Psid,
+      amount: parseInt(amount),
+      resultingAmount: updatedDriver.balance,
+      date: getDate(),
+    });
+
+    await res.send(`
+      <html>
+        <body>
+          <h1>Reload Successful</h1>
+          <p>Please check account balance by messaging "Bal" to Hatud Express</p>
+        </body>
+      </html>
+    `);
+  }
 });
 
 app.get("/webhook", (req, res) => {
@@ -358,7 +424,7 @@ async function handleUserRegistration(Psid) {
   const userRecord = await findUser({ Psid: Psid });
   if (userRecord == null) {
     // const userInfo = await getUserInformation(Psid);
-    await createUser({ Psid: Psid, dateCreated: new Date() });
+    await createUser({ Psid: Psid, dateCreated: getDate() });
   }
 }
 async function handleStartTransaction(senderPsid, message) {
@@ -439,7 +505,7 @@ async function handleStartTransaction(senderPsid, message) {
         isCancelled: false,
         orderNumber: orderNumber,
         withRider: false,
-        dateCreated: new Date(),
+        dateCreated: getDate(),
       });
 
       await broadcastNewOrder(orderNumber, orderTrackingRecord.type, message);
@@ -533,7 +599,7 @@ async function handleOrderAssignment(senderPsid, message) {
       }
       await sendOrderAssignedToDriver(
         order.user,
-        driver.first_name + " " + driver.last_name
+        driver.firstName + " " + driver.lastName
       );
       await broadcastDriverOrderAssignment(orderNumber);
       const orderRecord = await findOrder({
@@ -565,7 +631,7 @@ async function startDriverUserTransaction(driver, orderNumber) {
     orderNumber: orderRecord.orderNumber,
     messages: [],
     status: "Ongoing",
-    dateCreated: new Date(),
+    dateCreated: getDate(),
   });
 
   const filter = { Psid: driver };
@@ -589,7 +655,7 @@ async function handleDriverRegistration(senderPsid, message) {
         status: "Vacant",
         verified: false,
         balance: 0,
-        dateCreated: new Date(),
+        dateCreated: getDate(),
       });
       await sendGenericMessage(senderPsid, "DRIVER_SUCCESSFUL_REGISTRATION");
       await sendGenericMessage(senderPsid, "NEW_DRIVER_BALANCE_INFO");
@@ -641,6 +707,13 @@ async function createCountersCollection() {
   } catch (err) {
     console.error("Error creating counters!", err);
   }
+}
+
+function getDate() {
+  const date = new Date(); // Current date/time in local timezone
+  const utcDate = new Date(date.toISOString());
+  const pstDate = new Date(utcDate.getTime() + 8 * 60 * 60 * 1000);
+  return pstDate;
 }
 
 // listen for requests :)

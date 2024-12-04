@@ -168,6 +168,14 @@ async function sendOrderAssignedToDriver(recepientPsid, driverName) {
   await callSendAPI(recepientPsid, orderAssignedResponse);
 }
 
+async function sendReloadConfirmation(recepientPsid, reloadAmount, newBalance) {
+  const reloadConfirmationMessage = await getSetting("RELOAD_CONFIRMATION");
+  const reloadConfirmationResponse = {
+    text: util.format(reloadConfirmationMessage, reloadAmount, newBalance),
+  };
+  await callSendAPI(recepientPsid, reloadConfirmationResponse);
+}
+
 async function sendPendingOrdersToVacantDriver(driverPsid) {
   const database = await connectToDatabase();
   const orderCollection = database.collection("order");
@@ -259,4 +267,5 @@ module.exports = {
   sendBalanceToDriver,
   sendRideAssigned,
   sendPackageAssigned,
+  sendReloadConfirmation,
 };

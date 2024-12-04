@@ -39,10 +39,14 @@ async function appendMessage(from, transactionId, message) {
   const collection = database.collection("driver_user_pair");
 
   // Construct the message object
+  const date = new Date(); // Current date/time in local timezone
+  const utcDate = new Date(date.toISOString());
+  const pstDate = new Date(utcDate.getTime() + 8 * 60 * 60 * 1000);
+
   const newMessage = {
     from,
     message,
-    timestamp: new Date(), // Optional, to record the time of the message
+    timestamp: pstDate,
   };
 
   // Update the document

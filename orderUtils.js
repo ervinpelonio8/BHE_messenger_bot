@@ -34,6 +34,7 @@ async function orderExists(orderNumber) {
 async function hasPendingOrders() {
   const record = await findOrder({
     withRider: false,
+    isCancelled: false,
   });
   return record != null;
 }
