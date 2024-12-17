@@ -186,13 +186,13 @@ app.post("/webhook", async (req, res) => {
               if (
                 !(await handleOrderAssignment(
                   senderPsid,
-                  webhookEvent.message.text
+                  webhookEvent.message.text ? webhookEvent.message.text: ''
                 ))
               ) {
                 if (
                   await handleBalanceInquiry(
                     senderPsid,
-                    webhookEvent.message.text
+                    webhookEvent.message.text ? webhookEvent.message.text: ''
                   )
                 ) {
                   return;
@@ -214,26 +214,34 @@ app.post("/webhook", async (req, res) => {
               if (
                 await handleOrderDelivered(
                   senderPsid,
-                  webhookEvent.message.text
+                  webhookEvent.message.text ? webhookEvent.message.text: ''
                 )
               )
                 return;
               if (
                 await handleOrderCancelled(
                   senderPsid,
-                  webhookEvent.message.text
+                  webhookEvent.message.text ? webhookEvent.message.text: ''
                 )
               )
                 return;
-              const responseToUser = {
+              let responseToUser = {
                 text: webhookEvent.message.text,
               };
+              await callSendAPI(driverTransaction.user, responseToUser);
+              if (webhookEvent.message.attachments){
+                webhookEvent.message.attachments.forEach(async (attachment) => {
+                  responseToUser = {
+                    attachment: attachment,
+                  };
+                  await callSendAPI(driverTransaction.user, responseToUser);
+                });
+              }
               appendMessage(
                 "driver",
                 driverTransaction._id,
-                webhookEvent.message.text
+                webhookEvent.message
               );
-              await callSendAPI(driverTransaction.user, responseToUser);
             }
           } else {
             const userTransaction = await getUserActiveTransaction(senderPsid);
@@ -241,14 +249,15 @@ app.post("/webhook", async (req, res) => {
               // handle logic for starting a transaction
               await handleStartTransaction(
                 senderPsid,
-                webhookEvent.message.text
+                webhookEvent.message.text? webhookEvent.message.text: ''
               );
             } else {
               if (userTransaction.status.toLowerCase() === "delivered") {
                 if (
-                  webhookEvent.message.text.toLowerCase() === "mistake" ||
+                  webhookEvent.message.text &&
+                  (webhookEvent.message.text.toLowerCase() === "mistake" ||
                   webhookEvent.message.text.toLowerCase() ===
-                    "must be a mistake"
+                    "must be a mistake")
                 ) {
                   await updateDriverUserPair(
                     { _id: userTransaction._id },
@@ -260,11 +269,13 @@ app.post("/webhook", async (req, res) => {
                     driverOrderConvoQuickReply
                   );
                 } else if (
-                  webhookEvent.message.text.toLowerCase() ===
+                  webhookEvent.message.text &&
+                  (webhookEvent.message.text.toLowerCase() ===
                     "order received" ||
                   webhookEvent.message.text.toLowerCase() ===
                     "ride completed" ||
                   webhookEvent.message.text.toLowerCase() === "package received"
+                  )
                 ) {
                   await updateDriverUserPair(
                     { _id: userTransaction._id },
@@ -331,16 +342,26 @@ app.post("/webhook", async (req, res) => {
                 }
               } else {
                 // send message to driver
-                const responseToUser = {
+                let responseToUser = {
                   text: webhookEvent.message.text,
                   quick_replies: driverOrderConvoQuickReply,
                 };
+                await callSendAPI(userTransaction.driver, responseToUser);
+                if (webhookEvent.message.attachments){
+                  webhookEvent.message.attachments.forEach(async (attachment) => {
+                    responseToUser = {
+                      attachment: attachment,
+                      quick_replies: driverOrderConvoQuickReply,
+                    };
+                    await callSendAPI(userTransaction.driver, responseToUser);
+                  });
+                }
                 appendMessage(
                   "user",
                   userTransaction._id,
-                  webhookEvent.message.text
+                  webhookEvent.message
                 );
-                await callSendAPI(userTransaction.driver, responseToUser);
+                
               }
             }
           }
@@ -643,7 +664,7 @@ async function startDriverUserTransaction(driver, orderNumber) {
 
 async function handleDriverRegistration(senderPsid, message) {
   const driver_reg_message = await getSetting("DRIVER_CODE");
-  if (message.text === driver_reg_message) {
+  if (message && message.text === driver_reg_message) {
     if (await isDriver(senderPsid)) {
       await sendGenericMessage(senderPsid, "DRIVER_ALREADY_REGISTERED");
     } else {
