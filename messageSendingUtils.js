@@ -241,7 +241,7 @@ function callSendAPI(senderPsid, response) {
     (err, _res, _body) => {
       if (!err) {
       } else {
-        console.error("Unable to send message:" + err);
+        console.error("Unable to send message:" + err.message);
       }
     }
   );
