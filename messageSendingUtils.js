@@ -1,5 +1,7 @@
 require("dotenv").config();
-const request = require("request"),
+const request = require("request").defaults({
+  family: 4 // Force IPv4
+}),
   express = require("express"),
   { urlencoded, json, text } = require("body-parser"),
   app = express();
@@ -217,43 +219,67 @@ async function sendOrderCancelledInfoToDriver(recepientPsid, orderNumber) {
 function callSendAPI(senderPsid, response) {
   console.log("SenderPsid: ", senderPsid);
   console.log("Response: ", response);
-  //console.log(response.attachment)
 
-  // The page access token we have generated in your app settings
   const PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN;
-
-  // Construct the message body
-  let requestBody = {
+  const requestBody = {
     recipient: {
       id: senderPsid,
     },
     message: response,
   };
 
-  // Send the HTTP request to the Messenger Platform
-  request(
-  {
+  // Add timeout and retry configuration
+  const requestOptions = {
     uri: "https://graph.facebook.com/v2.6/me/messages",
     qs: { access_token: PAGE_ACCESS_TOKEN },
     method: "POST",
     json: requestBody,
-  },
-  (err, res, body) => {
-    if (err) {
-      console.error("Request Error:", err);
-    } else if (res.statusCode !== 200) {
-      console.error(
-        `Error Response:
-         - Status Code: ${res.statusCode}
-         - Status Message: ${res.statusMessage}
-         - Response Body: ${JSON.stringify(body, null, 2)}`
-      );
-    } else {
-      console.log("Message sent successfully:", body);
-    }
-  }
-);
+    timeout: 10000, // 15 second timeout
+    forever: true, // Keep-alive
+    headers: {
+      'Connection': 'keep-alive'
+    },
+    retry: 3, // Number of retries
+    retryDelay: 1000 // Delay between retries in milliseconds
+  };
 
+  return new Promise((resolve, reject) => {
+    const makeRequest = (attempt = 1) => {
+      request(requestOptions, (err, res, body) => {
+        if (err) {
+          console.error(`Attempt ${attempt} failed:`, err);
+          if (attempt < requestOptions.retry) {
+            console.log(`Retrying in ${requestOptions.retryDelay}ms...`);
+            setTimeout(() => makeRequest(attempt + 1), requestOptions.retryDelay);
+            return;
+          }
+          reject(err);
+          return;
+        }
+
+        if (res.statusCode !== 200) {
+          console.error(
+            `Error Response (Attempt ${attempt}):
+             - Status Code: ${res.statusCode}
+             - Status Message: ${res.statusMessage}
+             - Response Body: ${JSON.stringify(body, null, 2)}`
+          );
+          if (attempt < requestOptions.retry) {
+            console.log(`Retrying in ${requestOptions.retryDelay}ms...`);
+            setTimeout(() => makeRequest(attempt + 1), requestOptions.retryDelay);
+            return;
+          }
+          reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
+          return;
+        }
+
+        console.log("Message sent successfully:", body);
+        resolve(body);
+      });
+    };
+
+    makeRequest();
+  });
 }
 
 module.exports = {
