@@ -232,19 +232,28 @@ function callSendAPI(senderPsid, response) {
 
   // Send the HTTP request to the Messenger Platform
   request(
-    {
-      uri: "https://graph.facebook.com/v2.6/me/messages",
-      qs: { access_token: PAGE_ACCESS_TOKEN },
-      method: "POST",
-      json: requestBody,
-    },
-    (err, _res, _body) => {
-      if (!err) {
-      } else {
-        console.error("Unable to send message:" + err.message);
-      }
+  {
+    uri: "https://graph.facebook.com/v2.6/me/messages",
+    qs: { access_token: PAGE_ACCESS_TOKEN },
+    method: "POST",
+    json: requestBody,
+  },
+  (err, res, body) => {
+    if (err) {
+      console.error("Request Error:", err);
+    } else if (res.statusCode !== 200) {
+      console.error(
+        `Error Response:
+         - Status Code: ${res.statusCode}
+         - Status Message: ${res.statusMessage}
+         - Response Body: ${JSON.stringify(body, null, 2)}`
+      );
+    } else {
+      console.log("Message sent successfully:", body);
     }
-  );
+  }
+);
+
 }
 
 module.exports = {
