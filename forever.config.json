@@ -1,0 +1,13 @@
+{
+  "uid": "messenger-bot",
+  "append": true,
+  "watch": true,
+  "script": "app.js",
+  "sourceDir": "/path/to/your/app",
+  "logFile": "/path/to/your/app/logs/forever.log",
+  "outFile": "/path/to/your/app/logs/out.log",
+  "errFile": "/path/to/your/app/logs/error.log",
+  "max": 3,
+  "minUptime": 5000,
+  "spinSleepTime": 2000
+} 

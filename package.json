@@ -4,7 +4,12 @@
   "description": "An example webhook for Facebook Messenger quick start tutorial.",
   "main": "app.js",
   "scripts": {
-    "start": "node app.js"
+    "start": "node app.js",
+    "start:prod": "forever start forever.config.json",
+    "stop": "forever stop messenger-bot",
+    "restart": "forever restart messenger-bot",
+    "list": "forever list",
+    "logs": "tail -f logs/forever.log"
   },
   "dependencies": {
     "axios": "^1.7.7",
