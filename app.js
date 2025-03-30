@@ -228,7 +228,9 @@ app.post("/webhook", async (req, res) => {
               let responseToUser = {
                 text: webhookEvent.message.text,
               };
-              await callSendAPI(driverTransaction.user, responseToUser);
+              if (webhookEvent.message.text) {
+                await callSendAPI(driverTransaction.user, responseToUser);
+              }
               if (webhookEvent.message.attachments){
                 webhookEvent.message.attachments.forEach(async (attachment) => {
                   responseToUser = {
@@ -346,7 +348,9 @@ app.post("/webhook", async (req, res) => {
                   text: webhookEvent.message.text,
                   quick_replies: driverOrderConvoQuickReply,
                 };
-                await callSendAPI(userTransaction.driver, responseToUser);
+                if (webhookEvent.message.text) {
+                  await callSendAPI(userTransaction.driver, responseToUser);
+                }
                 if (webhookEvent.message.attachments){
                   webhookEvent.message.attachments.forEach(async (attachment) => {
                     responseToUser = {
